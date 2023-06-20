@@ -16,8 +16,8 @@ struct Cli {
     /// dns name or ip address
     hostname: String,
 
-    #[arg(short = 'i', default_value_t = 1.0)]
-    interval: f64,
+    #[arg(short = 'i', default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
+    interval: u64,
 }
 
 #[derive(Debug)]
@@ -44,7 +44,7 @@ fn parse() -> Option<Config> {
         .nth(0)
         .unwrap()
         .ip();
-    let interval = Duration::from_secs_f64(args.interval);
+    let interval = Duration::from_secs(args.interval);
 
     Config::new(destination, interval)
 }
@@ -71,9 +71,9 @@ fn run(config: Config) {
         if !running.load(Ordering::SeqCst) {
             break;
         }
-        
+
         let time_begin = Instant::now();
-        
+
         // send message
         println!("{:#?}", config);
 
@@ -86,5 +86,4 @@ fn run(config: Config) {
 
     // when \C-c is pressed
     println!("statistics: ");
-    
 }
