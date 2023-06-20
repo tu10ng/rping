@@ -1,4 +1,12 @@
 use clap::Parser;
+use pnet::{
+    packet::{
+        icmp::{echo_reply, echo_request, IcmpTypes},
+        ip::IpNextHeaderProtocols,
+        Packet,
+    },
+    transport::{icmp_packet_iter, transport_channel, TransportChannelType, TransportProtocol},
+};
 use std::{
     net::{IpAddr, ToSocketAddrs},
     process,
@@ -58,6 +66,9 @@ fn main() {
 }
 
 fn run(config: Config) {
+    let mut sequence: u16 = 0;
+    eprintln!("{:#?}", config);
+
     // handle \C-c
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -75,7 +86,22 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        println!("{:#?}", config);
+        let timeout: Duration = Duration::new(5, 0);
+        let identifier: u16 = 114;
+        match ping(config.destination, timeout, sequence, identifier) {
+            Some(rtt) => {
+                println!(
+                    "answer from {} seq={} rtt={}ms",
+                    config.destination,
+                    sequence,
+                    rtt.as_millis()
+                );
+            }
+            None => {
+                println!("no answer");
+            }
+        }
+        sequence += 1;
 
         // sleep until interval is reached
         let time_left_to_sleep = config.interval - Instant::now().duration_since(time_begin);
@@ -86,4 +112,45 @@ fn run(config: Config) {
 
     // when \C-c is pressed
     println!("statistics: ");
+}
+
+fn ping(address: IpAddr, timeout: Duration, sequence: u16, identifier: u16) -> Option<Duration> {
+    let size = 64;
+    let mut packet_buffer: Vec<u8> = vec![0; size];
+    // ipv4
+    assert!(address.is_ipv4());
+    let mut packet = echo_request::MutableEchoRequestPacket::new(&mut packet_buffer).unwrap();
+    packet.set_icmp_type(IcmpTypes::EchoRequest);
+    packet.set_sequence_number(sequence);
+    packet.set_identifier(identifier);
+    packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
+    let (mut tx, mut rx) = transport_channel(
+        size,
+        TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp)),
+    )
+    .unwrap();
+    tx.send_to(packet, address).unwrap();
+
+    let time_start = Instant::now();
+    let mut rx_iter = icmp_packet_iter(&mut rx);
+    loop {
+        let data = rx_iter.next_with_timeout(timeout).unwrap();
+        match data {
+            Some(data) => {
+                let (received, _) = data;
+                if received.get_icmp_type() == IcmpTypes::EchoReply {
+                    let reply = echo_reply::EchoReplyPacket::new(received.packet()).unwrap();
+                    if reply.get_identifier() == identifier
+                        && reply.get_sequence_number() == sequence
+                    {
+                        return Some(Instant::now().duration_since(time_start));
+                    } else {
+                        panic!("maybe impossible sequence number");
+                    }
+                }
+            }
+
+            None => return None,
+        }
+    }
 }
