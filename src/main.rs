@@ -1,7 +1,12 @@
 use clap::Parser;
 use std::{
     net::{IpAddr, ToSocketAddrs},
-    process, thread,
+    process,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
     time::{Duration, Instant},
 };
 
@@ -53,13 +58,33 @@ fn main() {
 }
 
 fn run(config: Config) {
+    // handle \C-c
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     loop {
+        // when \C-c is pressed
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+        
         let time_begin = Instant::now();
+        
+        // send message
         println!("{:#?}", config);
 
+        // sleep until interval is reached
         let time_left_to_sleep = config.interval - Instant::now().duration_since(time_begin);
         if time_left_to_sleep > Duration::new(0, 0) {
             thread::sleep(time_left_to_sleep)
         }
     }
+
+    // when \C-c is pressed
+    println!("statistics: ");
+    
 }
