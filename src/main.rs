@@ -89,12 +89,12 @@ fn run(config: Config) {
         let timeout: Duration = Duration::new(5, 0);
         let identifier: u16 = 114;
         match ping(config.destination, timeout, sequence, identifier) {
-            Some(rtt) => {
+            Some(time) => {
                 println!(
-                    "answer from {} seq={} rtt={}ms",
+                    "64 bytes from {}: icmp_seq={} time={}ms",
                     config.destination,
                     sequence,
-                    rtt.as_millis()
+                    time.as_millis()
                 );
             }
             None => {
