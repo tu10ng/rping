@@ -24,7 +24,7 @@ struct Cli {
     /// dns name or ip address
     hostname: String,
 
-    /// Stop after sending count ECHO_REQUEST packets. 
+    /// Stop after sending count ECHO_REQUEST packets.
     #[arg(short = 'c', long = "count", default_value_t = 0, value_parser = clap::value_parser!(u16).range(0..))]
     count: u16,
 
@@ -36,7 +36,7 @@ struct Cli {
     #[arg(short = 'q')]
     quiet: bool,
 
-    /// Specifies the number of data bytes to be sent. 
+    /// Specifies the number of data bytes to be sent.
     #[arg(short = 's', long = "packetsize", default_value_t = 56, value_parser = clap::value_parser!(u64).range(1..))]
     packet_size: u64,
 
@@ -108,7 +108,10 @@ fn run(config: Config) {
     let mut sequence: u16 = 0;
     let mut stat_received = 0;
     let time_init = Instant::now();
-    println!("RPING {} {} bytes of data", config.destination, config.packet_size);
+    println!(
+        "RPING {} {} bytes of data",
+        config.destination, config.packet_size
+    );
 
     // handle \C-c
     let running = Arc::new(AtomicBool::new(true));
@@ -127,14 +130,7 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        let identifier: u16 = 114;
-        match ping(
-            config.destination,
-            config.ttl,
-            config.packet_size,
-            sequence,
-            identifier,
-        ) {
+        match ping(config.destination, config.ttl, config.packet_size, sequence) {
             Some(time) => {
                 stat_received += 1;
                 if !config.quiet {
@@ -170,17 +166,18 @@ fn run(config: Config) {
 
     // when \C-c is pressed
     println!("--- {} rping statistics ---", config.destination);
-    println!("{} packets transmitted, {} received, {}% packet loss, time {}ms", sequence, stat_received, (sequence - stat_received) / sequence, Instant::now().duration_since(time_init).as_millis());
+    println!(
+        "{} packets transmitted, {} received, {}% packet loss, time {}ms",
+        sequence,
+        stat_received,
+        (sequence - stat_received) / sequence,
+        Instant::now().duration_since(time_init).as_millis()
+    );
 }
 
-fn ping(
-    address: IpAddr,
-    ttl: u8,
-    packet_size: usize,
-    sequence: u16,
-    identifier: u16,
-) -> Option<Duration> {
+fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16) -> Option<Duration> {
     let timeout: Duration = Duration::new(5, 0);
+    let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
     let size = packet_size + 8; // 56 data bytes + 8 icmp header
     let mut packet_buffer: Vec<u8> = vec![0; size];
     // ipv4
@@ -190,6 +187,7 @@ fn ping(
     packet.set_sequence_number(sequence);
     packet.set_identifier(identifier);
     packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
+    
     let (mut tx, mut rx) = transport_channel(
         size,
         TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp)),
