@@ -25,6 +25,8 @@ trying sudo instead of setcap have the same result.
 
 no relative information found on the internet.
 
+- thread::sleep stuck \C-c
+
 - slower than `ping` program:
 
 while running 
@@ -40,7 +42,7 @@ ping gives 4000ms execution time, while our program gives 5000ms.
 - [x] echo output message to STDOUT
 - [ ] make ping and echo concurrent
 - [x] calculate statistics after \C-c
-- [ ] colorful output message, maybe use crate `colored`
+- [ ] ~~colorful output message, maybe use crate `colored`~~
 - args
   - [x] support ip address 
   - [x] support hostname
