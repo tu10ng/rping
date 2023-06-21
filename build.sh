@@ -1,3 +1,3 @@
-cargo build && 
-sudo setcap cap_net_raw=+eip target/debug/rping && 
-cargo run -- "$@"
+cargo build --release && 
+sudo setcap cap_net_raw=+eip target/release/rping && 
+cargo run --release -- "$@"

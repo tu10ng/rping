@@ -24,22 +24,49 @@ struct Cli {
     /// dns name or ip address
     hostname: String,
 
+    #[arg(short = 'c', default_value_t = 0, value_parser = clap::value_parser!(u16).range(0..))]
+    count: u16,
+
     #[arg(short = 'i', default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
     interval: u64,
+
+    #[arg(short = 'q')]
+    quiet: bool,
+
+    #[arg(short = 's', default_value_t = 56, value_parser = clap::value_parser!(u64).range(1..))]
+    packet_size: u64,
+
+    #[arg(short = 't', default_value_t = 52, value_parser = clap::value_parser!(u8).range(1..))]
+    ttl: u8,
 }
 
 #[derive(Debug)]
 struct Config {
     // 93.184.216.34
     destination: IpAddr,
+    count: u16,
     interval: Duration,
+    quiet: bool,
+    packet_size: usize,
+    ttl: u8,
 }
 
 impl Config {
-    pub fn new(destination: IpAddr, interval: Duration) -> Option<Config> {
+    pub fn new(
+        destination: IpAddr,
+        count: u16,
+        interval: Duration,
+        quiet: bool,
+        packet_size: usize,
+        ttl: u8,
+    ) -> Option<Config> {
         Some(Config {
             destination,
+            count,
             interval,
+            quiet,
+            packet_size,
+            ttl,
         })
     }
 }
@@ -53,8 +80,16 @@ fn parse() -> Option<Config> {
         .unwrap()
         .ip();
     let interval = Duration::from_secs(args.interval);
+    let packet_size: usize = args.packet_size.try_into().unwrap();
 
-    Config::new(destination, interval)
+    Config::new(
+        destination,
+        args.count,
+        interval,
+        args.quiet,
+        packet_size,
+        args.ttl,
+    )
 }
 
 fn main() {
@@ -67,7 +102,9 @@ fn main() {
 
 fn run(config: Config) {
     let mut sequence: u16 = 0;
-    eprintln!("{:#?}", config);
+    let mut stat_received = 0;
+    let time_init = Instant::now();
+    println!("RPING {} {} bytes of data", config.destination, config.packet_size);
 
     // handle \C-c
     let running = Arc::new(AtomicBool::new(true));
@@ -86,36 +123,61 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        let timeout: Duration = Duration::new(5, 0);
         let identifier: u16 = 114;
-        match ping(config.destination, timeout, sequence, identifier) {
+        match ping(
+            config.destination,
+            config.ttl,
+            config.packet_size,
+            sequence,
+            identifier,
+        ) {
             Some(time) => {
-                println!(
-                    "64 bytes from {}: icmp_seq={} time={}ms",
-                    config.destination,
-                    sequence,
-                    time.as_millis()
-                );
+                stat_received += 1;
+                if !config.quiet {
+                    println!(
+                        "{} bytes from {}: icmp_seq={} ttl={} time={}ms",
+                        config.packet_size + 8,
+                        config.destination,
+                        config.ttl,
+                        sequence,
+                        time.as_millis()
+                    );
+                }
             }
             None => {
-                println!("no answer");
+                if !config.quiet {
+                    println!("no answer");
+                }
             }
         }
         sequence += 1;
 
         // sleep until interval is reached
-        let time_left_to_sleep = config.interval - Instant::now().duration_since(time_begin);
-        if time_left_to_sleep > Duration::new(0, 0) {
-            thread::sleep(time_left_to_sleep)
+        if config.interval > Instant::now().duration_since(time_begin) {
+            let time_left_to_sleep = config.interval - Instant::now().duration_since(time_begin);
+            thread::sleep(time_left_to_sleep);
+        }
+
+        // end loop if reached count
+        if sequence >= config.count {
+            break;
         }
     }
 
     // when \C-c is pressed
-    println!("statistics: ");
+    println!("--- {} rping statistics ---", config.destination);
+    println!("{} packets transmitted, {} received, {}% packet loss, time {}ms", sequence, stat_received, (sequence - stat_received) / sequence, Instant::now().duration_since(time_init).as_millis());
 }
 
-fn ping(address: IpAddr, timeout: Duration, sequence: u16, identifier: u16) -> Option<Duration> {
-    let size = 64;
+fn ping(
+    address: IpAddr,
+    ttl: u8,
+    packet_size: usize,
+    sequence: u16,
+    identifier: u16,
+) -> Option<Duration> {
+    let timeout: Duration = Duration::new(5, 0);
+    let size = packet_size + 8; // 56 data bytes + 8 icmp header
     let mut packet_buffer: Vec<u8> = vec![0; size];
     // ipv4
     assert!(address.is_ipv4());
@@ -129,6 +191,8 @@ fn ping(address: IpAddr, timeout: Duration, sequence: u16, identifier: u16) -> O
         TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp)),
     )
     .unwrap();
+    tx.set_ttl(ttl).unwrap();
+
     tx.send_to(packet, address).unwrap();
 
     let time_start = Instant::now();
