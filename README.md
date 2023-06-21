@@ -17,6 +17,14 @@ cargo run --release -- www.example.com
 ```
 
 ## problems
+- -b flag:
+
+when pinging 255.255.255.255, program panics without usefull information.
+
+trying sudo instead of setcap have the same result.
+
+no relative information found on the internet.
+
 - slower than `ping` program:
 
 while running 

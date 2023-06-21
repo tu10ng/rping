@@ -24,25 +24,29 @@ struct Cli {
     /// dns name or ip address
     hostname: String,
 
-    #[arg(short = 'c', default_value_t = 0, value_parser = clap::value_parser!(u16).range(0..))]
+    /// Stop after sending count ECHO_REQUEST packets. 
+    #[arg(short = 'c', long = "count", default_value_t = 0, value_parser = clap::value_parser!(u16).range(0..))]
     count: u16,
 
-    #[arg(short = 'i', default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
+    /// Wait interval seconds between sending each packet. positive integer allowed.
+    #[arg(short = 'i', long = "interval", default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
     interval: u64,
 
+    /// Quiet output. Nothing is displayed except the summary lines at startup time and when finished.
     #[arg(short = 'q')]
     quiet: bool,
 
-    #[arg(short = 's', default_value_t = 56, value_parser = clap::value_parser!(u64).range(1..))]
+    /// Specifies the number of data bytes to be sent. 
+    #[arg(short = 's', long = "packetsize", default_value_t = 56, value_parser = clap::value_parser!(u64).range(1..))]
     packet_size: u64,
 
-    #[arg(short = 't', default_value_t = 52, value_parser = clap::value_parser!(u8).range(1..))]
+    /// Set the IP Time to Live.
+    #[arg(short = 't', long = "ttl", default_value_t = 52, value_parser = clap::value_parser!(u8).range(1..))]
     ttl: u8,
 }
 
 #[derive(Debug)]
 struct Config {
-    // 93.184.216.34
     destination: IpAddr,
     count: u16,
     interval: Duration,
