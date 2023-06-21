@@ -159,7 +159,7 @@ fn run(config: Config) {
         }
 
         // end loop if reached count
-        if sequence >= config.count {
+        if config.count != 0 && sequence >= config.count {
             break;
         }
     }
