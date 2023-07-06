@@ -2,10 +2,17 @@ use clap::Parser;
 use pnet::{
     packet::{
         icmp::{echo_reply, echo_request, IcmpTypes},
+        icmpv6::{Icmpv6Types, MutableIcmpv6Packet},
         ip::IpNextHeaderProtocols,
         Packet,
     },
-    transport::{icmp_packet_iter, transport_channel, TransportChannelType, TransportProtocol},
+    transport::{
+        icmp_packet_iter, icmpv6_packet_iter, transport_channel, TransportChannelType,
+        TransportChannelType::Layer4,
+        TransportProtocol,
+        TransportProtocol::{Ipv4, Ipv6},
+        TransportReceiver, TransportSender,
+    },
 };
 use std::{
     net::{IpAddr, ToSocketAddrs},
@@ -165,6 +172,7 @@ fn run(config: Config) {
     }
 
     // when \C-c is pressed
+    println!();
     println!("--- {} rping statistics ---", config.destination);
     println!(
         "{} packets transmitted, {} received, {}% packet loss, time {}ms",
@@ -176,47 +184,74 @@ fn run(config: Config) {
 }
 
 fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16) -> Option<Duration> {
-    let timeout: Duration = Duration::new(5, 0);
+    let mut timeout: Duration = Duration::new(5, 0);
     let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
     let size = packet_size + 8; // 56 data bytes + 8 icmp header
     let mut packet_buffer: Vec<u8> = vec![0; size];
-    // ipv4
-    assert!(address.is_ipv4());
-    let mut packet = echo_request::MutableEchoRequestPacket::new(&mut packet_buffer).unwrap();
-    packet.set_icmp_type(IcmpTypes::EchoRequest);
-    packet.set_sequence_number(sequence);
-    packet.set_identifier(identifier);
-    packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
+    let mut tx: TransportSender;
+    let mut rx: TransportReceiver;
+    if address.is_ipv4() {
+        let mut packet = echo_request::MutableEchoRequestPacket::new(&mut packet_buffer).unwrap();
+        packet.set_icmp_type(IcmpTypes::EchoRequest);
+        packet.set_sequence_number(sequence);
+        packet.set_identifier(identifier);
+        packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
 
-    let (mut tx, mut rx) = transport_channel(
-        size,
-        TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp)),
-    )
-    .unwrap();
-    tx.set_ttl(ttl).unwrap();
-
-    tx.send_to(packet, address).unwrap();
+        (tx, rx) = transport_channel(size, Layer4(Ipv4(IpNextHeaderProtocols::Icmp))).unwrap();
+        tx.set_ttl(ttl).unwrap();
+        tx.send_to(packet, address).unwrap();
+    } else {
+        let mut packet = MutableIcmpv6Packet::new(&mut packet_buffer).unwrap();
+        packet.set_icmpv6_type(Icmpv6Types::EchoRequest);
+        (tx, rx) = transport_channel(size, Layer4(Ipv6(IpNextHeaderProtocols::Icmpv6))).unwrap();
+        tx.send_to(packet, address).unwrap();
+    }
 
     let time_start = Instant::now();
-    let mut rx_iter = icmp_packet_iter(&mut rx);
-    loop {
-        let data = rx_iter.next_with_timeout(timeout).unwrap();
-        match data {
-            Some(data) => {
-                let (received, _) = data;
-                if received.get_icmp_type() == IcmpTypes::EchoReply {
-                    let reply = echo_reply::EchoReplyPacket::new(received.packet()).unwrap();
-                    if reply.get_identifier() == identifier
-                        && reply.get_sequence_number() == sequence
-                    {
-                        return Some(Instant::now().duration_since(time_start));
-                    } else {
-                        panic!("maybe impossible sequence number");
+    if address.is_ipv4() {
+        let mut rx_iter = icmp_packet_iter(&mut rx);
+        loop {
+            let data = rx_iter.next_with_timeout(timeout).unwrap();
+            match data {
+                None => return None,
+                Some(data) => {
+                    let (received, _) = data;
+                    if received.get_icmp_type() == IcmpTypes::EchoReply {
+                        let reply = echo_reply::EchoReplyPacket::new(received.packet()).unwrap();
+                        if reply.get_identifier() == identifier
+                            && reply.get_sequence_number() == sequence
+                        {
+                            return Some(Instant::now().duration_since(time_start));
+                        } else {
+                            panic!("maybe impossible sequence number");
+                        }
                     }
                 }
             }
-
-            None => return None,
+            if Instant::now().duration_since(time_start) > timeout {
+                return None;
+            } else {
+                timeout = timeout - Instant::now().duration_since(time_start);
+            }
+        }
+    } else {
+        let mut rx_iter = icmpv6_packet_iter(&mut rx);
+        loop {
+            let data = rx_iter.next_with_timeout(timeout).unwrap();
+            match data {
+                None => return None,
+                Some(data) => {
+                    let (received, _) = data;
+                    if received.get_icmpv6_type() == Icmpv6Types::EchoReply {
+                        return Some(Instant::now().duration_since(time_start));
+                    }
+                }
+            }
+            if Instant::now().duration_since(time_start) > timeout {
+                return None;
+            } else {
+                timeout = timeout - Instant::now().duration_since(time_start);
+            }
         }
     }
 }
