@@ -18,8 +18,8 @@ cargo run --release -- www.example.com
 ## examples
 ``` shell
 ./build.sh --help
-./build.sh -4 -c 3 127.0.0.1
-./build.sh -6 ::1
+./build.sh -c 3 127.0.0.1
+./build.sh ::1
 
 ```
 ## problems
@@ -59,5 +59,3 @@ ping gives 4000ms execution time, while our program gives 5000ms.
   - [x] -q 安静模式，不显示每个收到的包的分析结果，只在结束时，显示汇总结果
   - [x] -s 指定发送的数据字节数
   - [x] -t 设置ttl值，只用于IPv
-  - [x] -4 只ping ipv4地址
-  - [x] -6 只ping ipv6地址
