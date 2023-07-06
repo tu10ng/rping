@@ -49,6 +49,9 @@ struct Cli {
     /// Set the IP Time to Live.
     #[arg(short = 't', long = "ttl", default_value_t = 52, value_parser = clap::value_parser!(u8).range(1..))]
     ttl: u8,
+
+    #[arg(short = 'o', long = "timeout", default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..))]
+    timeout: u8,
 }
 
 #[derive(Debug)]
@@ -59,6 +62,7 @@ struct Config {
     quiet: bool,
     packet_size: usize,
     ttl: u8,
+    timeout: u8
 }
 
 impl Config {
@@ -69,6 +73,7 @@ impl Config {
         quiet: bool,
         packet_size: usize,
         ttl: u8,
+        timeout: u8
     ) -> Option<Config> {
         Some(Config {
             destination,
@@ -77,6 +82,7 @@ impl Config {
             quiet,
             packet_size,
             ttl,
+            timeout
         })
     }
 }
@@ -99,6 +105,7 @@ fn parse() -> Option<Config> {
         args.quiet,
         packet_size,
         args.ttl,
+        args.timeout
     )
 }
 
@@ -136,7 +143,7 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        match ping(config.destination, config.ttl, config.packet_size, sequence) {
+        match ping(config.destination, config.ttl, config.packet_size, sequence, config.timeout) {
             Some(time) => {
                 stat_received += 1;
                 if !config.quiet {
@@ -181,8 +188,8 @@ fn run(config: Config) {
     );
 }
 
-fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16) -> Option<Duration> {
-    let mut timeout: Duration = Duration::new(5, 0);
+fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16, timeout: u8) -> Option<Duration> {
+    let mut timeout: Duration = Duration::new(timeout as u64, 0);
     let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
     let size = packet_size + 8; // 56 data bytes + 8 icmp header
     let mut packet_buffer: Vec<u8> = vec![0; size];
