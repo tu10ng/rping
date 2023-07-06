@@ -7,7 +7,7 @@ use pnet::{
         Packet,
     },
     transport::{
-        icmp_packet_iter, icmpv6_packet_iter, transport_channel, 
+        icmp_packet_iter, icmpv6_packet_iter, transport_channel,
         TransportChannelType::Layer4,
         TransportProtocol::{Ipv4, Ipv6},
         TransportReceiver, TransportSender,
@@ -49,6 +49,14 @@ struct Cli {
     /// Set the IP Time to Live.
     #[arg(short = 't', long = "ttl", default_value_t = 52, value_parser = clap::value_parser!(u8).range(1..))]
     ttl: u8,
+
+    /// Use IPv4 only.
+    #[arg(short = '4')]
+    ipv4: bool,
+
+    /// Use IPv6 only.
+    #[arg(short = '6')]
+    ipv6: bool,
 }
 
 #[derive(Debug)]
@@ -59,6 +67,8 @@ struct Config {
     quiet: bool,
     packet_size: usize,
     ttl: u8,
+    ipv4: bool,
+    ipv6: bool,
 }
 
 impl Config {
@@ -69,6 +79,8 @@ impl Config {
         quiet: bool,
         packet_size: usize,
         ttl: u8,
+        ipv4: bool,
+        ipv6: bool,
     ) -> Option<Config> {
         Some(Config {
             destination,
@@ -77,6 +89,8 @@ impl Config {
             quiet,
             packet_size,
             ttl,
+            ipv4,
+            ipv6,
         })
     }
 }
@@ -99,6 +113,8 @@ fn parse() -> Option<Config> {
         args.quiet,
         packet_size,
         args.ttl,
+        args.ipv4,
+        args.ipv6,
     )
 }
 
@@ -136,7 +152,14 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        match ping(config.destination, config.ttl, config.packet_size, sequence) {
+        match ping(
+            config.destination,
+            config.ttl,
+            config.packet_size,
+            sequence,
+            config.ipv4,
+            config.ipv6,
+        ) {
             Some(time) => {
                 stat_received += 1;
                 if !config.quiet {
@@ -182,14 +205,21 @@ fn run(config: Config) {
     );
 }
 
-fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16) -> Option<Duration> {
+fn ping(
+    address: IpAddr,
+    ttl: u8,
+    packet_size: usize,
+    sequence: u16,
+    ipv4: bool,
+    ipv6: bool,
+) -> Option<Duration> {
     let mut timeout: Duration = Duration::new(5, 0);
     let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
     let size = packet_size + 8; // 56 data bytes + 8 icmp header
     let mut packet_buffer: Vec<u8> = vec![0; size];
     let mut tx: TransportSender;
     let mut rx: TransportReceiver;
-    if address.is_ipv4() {
+    if !ipv6 && (ipv4 || address.is_ipv4()) {
         let mut packet = echo_request::MutableEchoRequestPacket::new(&mut packet_buffer).unwrap();
         packet.set_icmp_type(IcmpTypes::EchoRequest);
         packet.set_sequence_number(sequence);
