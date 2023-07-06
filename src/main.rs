@@ -66,7 +66,7 @@ struct Config {
     packet_size: usize,
     ttl: u8,
     timeout: u8,
-    broadcast: bool
+    broadcast: bool,
 }
 
 impl Config {
@@ -78,7 +78,7 @@ impl Config {
         packet_size: usize,
         ttl: u8,
         timeout: u8,
-        broadcast: bool
+        broadcast: bool,
     ) -> Option<Config> {
         Some(Config {
             destination,
@@ -88,7 +88,7 @@ impl Config {
             packet_size,
             ttl,
             timeout,
-            broadcast
+            broadcast,
         })
     }
 }
@@ -112,7 +112,7 @@ fn parse() -> Option<Config> {
         packet_size,
         args.ttl,
         args.timeout,
-        args.broadcast
+        args.broadcast,
     )
 }
 
@@ -141,6 +141,8 @@ fn run(config: Config) {
     })
     .expect("Error setting Ctrl-C handler");
 
+    let mut handlers = vec![];
+
     loop {
         // when \C-c is pressed
         if !running.load(Ordering::SeqCst) {
@@ -150,22 +152,40 @@ fn run(config: Config) {
         let time_begin = Instant::now();
 
         // send message
-        match ping(config.destination, config.ttl, config.packet_size, sequence, config.timeout) {
-            Some(time) => {
-                stat_received += 1;
-                if !config.quiet {
-                    println!(
-                        "{} bytes from {}: icmp_seq={} time={}ms",
-                        config.packet_size + 8,
-                        config.destination,
-                        sequence,
-                        time.as_micros() as f64 / 1000.0
-                    );
+        if config.broadcast {
+            let handler = broadcast_ping_factory(
+                config.destination,
+                config.ttl,
+                config.packet_size,
+                sequence,
+                config.timeout,
+                config.quiet,
+            );
+            handlers.push(handler);
+        } else {
+            match ping(
+                config.destination,
+                config.ttl,
+                config.packet_size,
+                sequence,
+                config.timeout,
+            ) {
+                Some(time) => {
+                    stat_received += 1;
+                    if !config.quiet {
+                        println!(
+                            "{} bytes from {}: icmp_seq={} time={}ms",
+                            config.packet_size + 8,
+                            config.destination,
+                            sequence,
+                            time.as_micros() as f64 / 1000.0
+                        );
+                    }
                 }
-            }
-            None => {
-                if !config.quiet {
-                    println!("no answer");
+                None => {
+                    if !config.quiet {
+                        println!("no answer");
+                    }
                 }
             }
         }
@@ -182,6 +202,11 @@ fn run(config: Config) {
             break;
         }
     }
+    if config.broadcast {
+        for handler in handlers {
+            handler.join().unwrap();
+        }
+    }
 
     // when \C-c is pressed
     println!();
@@ -195,7 +220,13 @@ fn run(config: Config) {
     );
 }
 
-fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16, timeout: u8) -> Option<Duration> {
+fn ping(
+    address: IpAddr,
+    ttl: u8,
+    packet_size: usize,
+    sequence: u16,
+    timeout: u8,
+) -> Option<Duration> {
     let mut timeout: Duration = Duration::new(timeout as u64, 0);
     let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
     let size = packet_size + 8; // 56 data bytes + 8 icmp header
@@ -266,4 +297,69 @@ fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16, timeout: u8
             }
         }
     }
+}
+
+fn broadcast_ping_factory(
+    address: IpAddr,
+    ttl: u8,
+    packet_size: usize,
+    sequence: u16,
+    timeout: u8,
+    quiet: bool,
+) -> thread::JoinHandle<()> {
+    return thread::spawn(move || {
+        let timeout: Duration = Duration::new(timeout as u64, 0);
+        let identifier: u16 = (std::process::id() % u16::max_value() as u32) as u16;
+        let size = packet_size + 8; // 56 data bytes + 8 icmp header
+        let mut packet_buffer: Vec<u8> = vec![0; size];
+
+        if !address.is_ipv4() {
+            panic!("broadcast address must be ipv4")
+        }
+
+        let mut packet = echo_request::MutableEchoRequestPacket::new(&mut packet_buffer).unwrap();
+        packet.set_icmp_type(IcmpTypes::EchoRequest);
+        packet.set_sequence_number(sequence);
+        packet.set_identifier(identifier);
+        packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
+
+        let (mut tx, mut rx) =
+            transport_channel(size, Layer4(Ipv4(IpNextHeaderProtocols::Icmp))).unwrap();
+        tx.set_ttl(ttl).unwrap();
+        tx.send_to(packet, address).unwrap();
+
+        let mut rx_iter = icmp_packet_iter(&mut rx);
+        loop {
+            let time_start = Instant::now();
+            let data = rx_iter.next_with_timeout(timeout).unwrap();
+            match data {
+                None => return,
+                Some(data) => {
+                    let (received, addr) = data;
+                    if received.get_icmp_type() == IcmpTypes::EchoReply {
+                        let reply = echo_reply::EchoReplyPacket::new(received.packet()).unwrap();
+                        if reply.get_identifier() == identifier
+                            && reply.get_sequence_number() == sequence
+                        {
+                            if !quiet {
+                                println!(
+                                    "{} bytes from {}: icmp_seq={} time={}ms",
+                                    packet_size + 8,
+                                    addr,
+                                    sequence,
+                                    Instant::now().duration_since(time_start).as_micros() as f64
+                                        / 1000.0
+                                );
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                }
+            }
+            if Instant::now().duration_since(time_start) > timeout {
+                return;
+            }
+        }
+    });
 }
