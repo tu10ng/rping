@@ -211,13 +211,21 @@ fn run(config: Config) {
     // when \C-c is pressed
     println!();
     println!("--- {} rping statistics ---", config.destination);
-    println!(
-        "{} packets transmitted, {} received, {}% packet loss, time {}ms",
-        sequence,
-        stat_received,
-        (sequence as f64 - stat_received as f64) / sequence as f64 * 100 as f64,
-        Instant::now().duration_since(time_init).as_millis()
-    );
+    if config.broadcast {
+        println!(
+            "{} packets transmitted, time {}ms",
+            sequence,
+            Instant::now().duration_since(time_init).as_millis()
+        );
+    } else {
+        println!(
+            "{} packets transmitted, {} received, {}% packet loss, time {}ms",
+            sequence,
+            stat_received,
+            (sequence - stat_received) / sequence,
+            Instant::now().duration_since(time_init).as_millis()
+        );
+    }
 }
 
 fn ping(
