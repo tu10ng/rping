@@ -142,11 +142,10 @@ fn run(config: Config) {
                 stat_received += 1;
                 if !config.quiet {
                     println!(
-                        "{} bytes from {}: icmp_seq={} ttl={} time={}ms",
+                        "{} bytes from {}: icmp_seq={} time={}ms",
                         config.packet_size + 8,
                         config.destination,
                         sequence,
-                        config.ttl,
                         time.as_micros() as f64 / 1000.0
                     );
                 }
