@@ -138,8 +138,8 @@ fn run(config: Config) {
                         "{} bytes from {}: icmp_seq={} ttl={} time={}ms",
                         config.packet_size + 8,
                         config.destination,
-                        config.ttl,
                         sequence,
+                        config.ttl,
                         time.as_millis()
                     );
                 }
@@ -187,7 +187,7 @@ fn ping(address: IpAddr, ttl: u8, packet_size: usize, sequence: u16) -> Option<D
     packet.set_sequence_number(sequence);
     packet.set_identifier(identifier);
     packet.set_checksum(pnet::util::checksum(packet.packet(), 1));
-    
+
     let (mut tx, mut rx) = transport_channel(
         size,
         TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp)),
