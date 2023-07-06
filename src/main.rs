@@ -52,6 +52,9 @@ struct Cli {
 
     #[arg(short = 'o', long = "timeout", default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..))]
     timeout: u8,
+
+    #[arg(short = 'b')]
+    broadcast: bool,
 }
 
 #[derive(Debug)]
@@ -62,7 +65,8 @@ struct Config {
     quiet: bool,
     packet_size: usize,
     ttl: u8,
-    timeout: u8
+    timeout: u8,
+    broadcast: bool
 }
 
 impl Config {
@@ -73,7 +77,8 @@ impl Config {
         quiet: bool,
         packet_size: usize,
         ttl: u8,
-        timeout: u8
+        timeout: u8,
+        broadcast: bool
     ) -> Option<Config> {
         Some(Config {
             destination,
@@ -82,7 +87,8 @@ impl Config {
             quiet,
             packet_size,
             ttl,
-            timeout
+            timeout,
+            broadcast
         })
     }
 }
@@ -105,7 +111,8 @@ fn parse() -> Option<Config> {
         args.quiet,
         packet_size,
         args.ttl,
-        args.timeout
+        args.timeout,
+        args.broadcast
     )
 }
 
