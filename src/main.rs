@@ -128,6 +128,9 @@ fn run(config: Config) {
     let mut sequence: u16 = 0;
     let mut stat_received = 0;
     let time_init = Instant::now();
+    let mut total_rrt = Duration::new(0, 0);
+    let mut min: Option<Duration> = None;
+    let mut max: Option<Duration> = None;
     println!(
         "RPING {} {} bytes of data",
         config.destination, config.packet_size
@@ -181,6 +184,23 @@ fn run(config: Config) {
                             time.as_micros() as f64 / 1000.0
                         );
                     }
+
+                    if let Some(current_min) = min {
+                        if time < current_min {
+                            min = Some(time)
+                        }
+                    } else {
+                        min = Some(time)
+                    }
+
+                    if let Some(current_max) = max {
+                        if time > current_max {
+                            max = Some(time)
+                        }
+                    } else {
+                        max = Some(time)
+                    }
+                    total_rrt += time;
                 }
                 None => {
                     if !config.quiet {
@@ -225,6 +245,14 @@ fn run(config: Config) {
             (sequence - stat_received) / sequence,
             Instant::now().duration_since(time_init).as_millis()
         );
+        if sequence != 0 {
+            println!(
+                "min={}ms max={}ms avg={}ms",
+                min.unwrap().as_micros() as f64 / 1000.0,
+                max.unwrap().as_micros() as f64 / 1000.0,
+                (total_rrt.as_micros() / sequence as u128) as f64 / 1000.0,
+            )
+        }
     }
 }
 
