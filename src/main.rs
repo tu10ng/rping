@@ -177,7 +177,7 @@ fn run(config: Config) {
         "{} packets transmitted, {} received, {}% packet loss, time {}ms",
         sequence,
         stat_received,
-        (sequence - stat_received) / sequence,
+        (sequence as f64 - stat_received as f64) / sequence as f64 * 100 as f64,
         Instant::now().duration_since(time_init).as_millis()
     );
 }
