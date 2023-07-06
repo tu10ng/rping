@@ -147,7 +147,7 @@ fn run(config: Config) {
                         config.destination,
                         sequence,
                         config.ttl,
-                        time.as_millis()
+                        time.as_micros() as f64 / 1000.0
                     );
                 }
             }
