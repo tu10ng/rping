@@ -17,7 +17,7 @@ cargo run --release -- www.example.com
 ```
 ## examples
 ``` shell
-./build.sh help
+./build.sh --help
 ./build.sh -4 -c 3 127.0.0.1
 ./build.sh -6 ::1
 
