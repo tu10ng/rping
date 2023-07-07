@@ -7,7 +7,7 @@ use pnet::{
         Packet,
     },
     transport::{
-        icmp_packet_iter, icmpv6_packet_iter, transport_channel, 
+        icmp_packet_iter, icmpv6_packet_iter, transport_channel,
         TransportChannelType::Layer4,
         TransportProtocol::{Ipv4, Ipv6},
         TransportReceiver, TransportSender,
